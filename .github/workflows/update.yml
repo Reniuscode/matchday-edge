@@ -1,0 +1,53 @@
+name: Update data and publish site
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"   # every 4 hours
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["pipeline/**", "site/**", ".github/workflows/**"]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build data
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python -m pipeline.build
+      - name: Save data back to the repo
+        run: |
+          git config user.name "matchday-edge-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then echo "No data changes"; else
+            git commit -q -m "Data update $(date -u +'%Y-%m-%d %H:%M') UTC"
+            git pull -q --rebase origin main && git push -q origin HEAD:main
+          fi
+      - name: Assemble site
+        run: |
+          mkdir -p site/data
+          cp data/latest.json site/data/latest.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

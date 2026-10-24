@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Matchday Edge</title>
+  <meta name="description" content="Premier League stats sheets, model probabilities, value bets and acca builder.">
+  <meta name="theme-color" content="#0b0d10">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c8f54a'/%3E%3Ctext x='16' y='23' font-family='Arial' font-weight='900' font-size='18' text-anchor='middle' fill='%2311160a'%3EM%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <a class="brand" href="#/"><span class="brand-mark">M</span><span>Matchday Edge <small id="updated"></small></span></a>
+      <nav class="tabs" id="tabs">
+        <a href="#/" data-r="fixtures">Fixtures</a>
+        <a href="#/value" data-r="value">Value bets</a>
+        <a href="#/accas" data-r="accas">Acca builder</a>
+        <a href="#/record" data-r="record">Track record</a>
+        <a href="#/about" data-r="about">How it works</a>
+      </nav>
+    </div>
+  </header>
+  <main id="app"><div class="skeleton"></div></main>
+  <button class="slip-fab empty" id="slipFab" aria-label="Open bet slip">Slip <span class="count" id="slipCount">0</span></button>
+  <div class="drawer-bg" id="drawerBg"></div>
+  <aside class="drawer" id="drawer" aria-label="Bet slip"></aside>
+  <div class="toast" id="toast"></div>
+  <script src="assets/app.js" type="module"></script>
+</body>
+</html>
