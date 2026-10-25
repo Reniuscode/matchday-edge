@@ -51,21 +51,19 @@ def season_events(slug: str, start: dt.date, end: dt.date) -> list[dict]:
     try:
         for e in fetch_json(url).get("events", []):
             events[str(e["id"])] = _event(e)
-    except Exception:
-        pass
+    except Exception as ex:
+        print(f"  ESPN ranged scoreboard failed: {ex}")
     if len(events) < 5:
-        chunks, d = [], start
-        while d <= end:
-            chunks.append((d, min(d + dt.timedelta(days=6), end)))
-            d += dt.timedelta(days=7)
+        print(f"  ESPN ranged scoreboard gave {len(events)} events; fetching day by day")
+        days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
 
-        def grab(rng):
-            a, b = rng
+        def grab(day):
             try:
-                return fetch_json(SITE.format(slug=slug) + f"/scoreboard?dates={a:%Y%m%d}-{b:%Y%m%d}&limit=200").get("events", [])
-            except Exception:
+                return fetch_json(SITE.format(slug=slug) + f"/scoreboard?dates={day:%Y%m%d}").get("events", [])
+            except Exception as ex:
+                print(f"    {day}: {ex}")
                 return []
-        for evs in pmap(grab, chunks, workers=6):
+        for evs in pmap(grab, days, workers=6):
             for e in evs:
                 events[str(e["id"])] = _event(e)
     return sorted(events.values(), key=lambda e: e["kickoff"])

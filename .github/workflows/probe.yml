@@ -1,0 +1,18 @@
+name: Probe data sources
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for u in "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard" \
+                   "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20261018" \
+                   "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20260801-20261115&limit=1000" \
+                   "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20261012-20261018" \
+                   "https://sports.core.api.espn.com/v2/sports/soccer/leagues/eng.1/events/401878769/competitions/401878769/competitors/393/roster?lang=en&region=us" \
+                   "https://fantasy.premierleague.com/api/bootstrap-static/"; do
+            echo "== $u"
+            curl -sS -A "Mozilla/5.0 (matchday-edge stats bot)" -o body -w "HTTP %{http_code} size %{size_download}\n" "$u"
+            head -c 300 body; echo
+            python3 -c "import json;d=json.load(open('body'));print('events', len(d.get('events',[])) if isinstance(d,dict) else '-')" || true
+          done

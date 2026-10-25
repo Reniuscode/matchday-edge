@@ -40,12 +40,17 @@ def run_backtest(seasons: dict, current_start: int, n_seasons: int = 3) -> dict:
         cur = sorted(seasons[y], key=lambda m: m["kickoff"])
         prev = seasons.get(y - 1, [])
         refs_hist = [m for yy in seasons if yy < y for m in seasons[yy]]
+        base_cache: dict = {}
         for i, m in enumerate(cur):
             before = cur[:i]
             hr, ar = team_rows(before, m["home"]), team_rows(before, m["away"])
             if len(hr) < MIN_GAMES or len(ar) < MIN_GAMES:
                 continue
-            base = league_baseline(before + prev if len(before) < 100 else before)
+            day = m["kickoff"][:10]
+            if day not in base_cache:  # same-day matches share one baseline
+                base_cache.clear()
+                base_cache[day] = league_baseline(before + prev if len(before) < 100 else before)
+            base = base_cache[day]
             if not base.get("goals") or not base.get("cards"):
                 continue
             hs, as_ = team_strength(hr, base), team_strength(ar, base)
