@@ -5,14 +5,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          for u in "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard" \
-                   "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20261018" \
-                   "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20260801-20261115&limit=1000" \
-                   "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20261012-20261018" \
-                   "https://sports.core.api.espn.com/v2/sports/soccer/leagues/eng.1/events/401878769/competitions/401878769/competitors/393/roster?lang=en&region=us" \
-                   "https://fantasy.premierleague.com/api/bootstrap-static/"; do
-            echo "== $u"
-            curl -sS -A "Mozilla/5.0 (matchday-edge stats bot)" -o body -w "HTTP %{http_code} size %{size_download}\n" "$u"
-            head -c 300 body; echo
-            python3 -c "import json;d=json.load(open('body'));print('events', len(d.get('events',[])) if isinstance(d,dict) else '-')" || true
-          done
+          for ua in "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36" "curl/8.5.0" "python-urllib/3.12"; do
+          for u in "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20261018" \
+                   "https://site.web.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates=20261018" \
+                   "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary?event=401879254" \
+                   "https://sports.core.api.espn.com/v2/sports/soccer/leagues/eng.1/events?dates=20261018&limit=50" ; do
+            echo "== [$ua] $u"
+            curl -sS -A "$ua" -o body -w "HTTP %{http_code} size %{size_download}\n" "$u"
+            head -c 200 body; echo
+          done; done
