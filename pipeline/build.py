@@ -305,6 +305,8 @@ def build(offline: bool = False, league_key: str = "EPL"):
     base_matches = cur if len(cur) >= 100 else cur + prev
     base = league_baseline(base_matches)
     table = league_table(cur)
+    prev_base = league_baseline(prev) if prev else None
+    prev_teams = {t for m in prev for t in (m["home"], m["away"])}
     venue = {
         "home": {"shots": base["shots"]["home"], "sot": base["sot"]["home"], "goal_def": base["goals"]["home"],
                  "cards": base["cards"]["home"], "fouls": 1.0, "fouls_won": 1.0},
@@ -329,7 +331,8 @@ def build(offline: bool = False, league_key: str = "EPL"):
         fdrow = next((f for f in fixtures_fd if matcher.match(f["home"]) == home and matcher.match(f["away"]) == away), None)
         ref_name = fdrow["referee"] if fdrow else None
         hrows, arows = team_rows(cur, home), team_rows(cur, away)
-        hs, as_ = team_strength(hrows, base), team_strength(arows, base)
+        hs = team_strength(hrows, base, team_rows(prev, home), prev_base, promoted=bool(prev) and home not in prev_teams)
+        as_ = team_strength(arows, base, team_rows(prev, away), prev_base, promoted=bool(prev) and away not in prev_teams)
         ref_cur = referee_profile(cur, ref_name, base)
         ref_all = referee_profile(all_hist, ref_name, base)
         ref_model = ref_all if ref_all and ref_all["games"] >= (ref_cur or {}).get("games", 0) else ref_cur

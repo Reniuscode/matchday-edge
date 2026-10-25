@@ -15,7 +15,18 @@ const heatColor = (p) => {
   return `hsl(${h} 62% ${30 + Math.abs(p - 0.5) * 8}%)`;
 };
 const heat = (p, text) => `<span class="heat" style="background:${heatColor(p)}">${text ?? pct(p)}</span>`;
-const teamColor = (t) => (t.color && t.color !== "000000" && t.color !== "ffffff" ? `#${t.color}` : t.alt_color && t.alt_color !== "ffffff" ? `#${t.alt_color}` : "#5d6675");
+const lum = (hex) => {
+  const n = parseInt(hex, 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+};
+// Team colour that stays visible on a dark background (falls back to the alternate kit colour, then grey)
+const teamColor = (t) => {
+  const ok = (h) => h && /^[0-9a-f]{6}$/i.test(h) && lum(h) > 0.035 && lum(h) < 0.85;
+  if (ok(t.color)) return `#${t.color}`;
+  if (ok(t.alt_color)) return `#${t.alt_color}`;
+  return "#5d6675";
+};
 const label = (s, fx) => s.replace("{home}", fx.home.short || fx.home.name).replace("{away}", fx.away.short || fx.away.name);
 const fxName = (fx) => `${fx.home.short || fx.home.name} v ${fx.away.short || fx.away.name}`;
 const kickoff = (iso) => new Date(iso);
@@ -365,7 +376,8 @@ function pageValue() {
   doubles.sort((x, y) => y.ev - x.ev);
   const props = LEGS.filter((l) => l.kind === "player" && l.p >= 0.55 && l.p <= 0.96 && l.exp_min >= 60 && l.hit_n >= 4 && l.hit >= 0.6)
     .sort((a, b) => b.p - a.p).slice(0, 24);
-  return `<div class="page-head"><div><h1>Value bets</h1><p>Prices where the bookmaker pays more than our estimate says they should. To be conservative, the edge uses a 50/50 blend of our model and the market's own view, and the bet has to clear both.</p></div></div>
+  return `<div class="page-head"><div><h1>Value bets</h1><p>Prices where the bookmaker pays more than our estimate says they should. To be conservative, the edge uses a 50/50 blend of our model and the market's own view, and the bet has to clear both.</p>
+    ${DATA.backtest?.bets?.count ? `<p>Honest check: over ${DATA.backtest.seasons.join(", ")} the same rule flagged ${DATA.backtest.bets.count} bets, which returned <b>${DATA.backtest.bets.roi >= 0 ? "+" : ""}${pct(DATA.backtest.bets.roi, 1)}</b> per bet. Roughly break-even beats the ~5% most bettors lose to the margin, but it is not a money machine. <a href="#/record" style="text-decoration:underline">See the track record</a>.</p>` : ""}</div></div>
     <div class="card"><div class="card-h"><h3>Singles</h3><span class="pill">${vals.length} found</span></div>
       ${vals.length ? `<div class="tbl-wrap"><table><thead><tr><th class="l">Match</th><th class="l">Pick</th><th>Model</th><th>Market</th><th>Best price</th><th>Edge</th><th></th></tr></thead><tbody>
         ${vals.map((l) => `<tr><td class="l"><a href="#/match/${l.fx}">${esc(l.match)}</a><br><small class="sub">${fmtShort(l.kickoff)} ${fmtTime(l.kickoff)}</small></td><td class="l"><b>${esc(l.label)}</b> <span class="vbadge ${l.value}">${l.value}</span></td>
@@ -468,7 +480,7 @@ function pageRecord() {
         ${(b.recent || []).map((r) => `<tr><td class="l sub">${esc(r.date)}</td><td class="l">${esc(r.match)}</td><td>${esc(r.pick.replace("_", " "))}</td><td>${fx2(r.price)}</td><td style="color:${r.won ? "var(--win)" : "var(--loss)"}">${r.won ? "Won" : "Lost"}</td></tr>`).join("")}
       </tbody></table></div></div>
     </div>
-    <p class="note">Past results use the pre-match prices published by football-data.co.uk. Those are early-week prices, which are softer than the closing line. Treat any profit here as encouraging, not proof.</p>${RG}`;
+    <p class="note">Over/under 2.5 goals edges are shown on match pages but never flagged as value, because in this test they lost about 7%. Past results use the pre-match prices published by football-data.co.uk. Those are early-week prices, which are softer than the closing line. Treat any profit here as encouraging, not proof.</p>${RG}`;
 }
 
 function pageAbout() {

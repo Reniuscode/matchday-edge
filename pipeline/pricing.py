@@ -5,8 +5,11 @@ from statistics import median
 
 EXCHANGE_COMMISSION = 0.05   # Betfair Exchange takes ~5% of winnings, so its price is worth a bit less
 MODEL_WEIGHT = 0.5           # how much we trust our model vs the market's own (de-vigged) view
-MIN_BLENDED_EDGE = 0.02      # flag as value only above this...
+MIN_BLENDED_EDGE = 0.04      # flag as value only above this...
 MIN_MODEL_EDGE = 0.05        # ...and when the raw model edge is clearly positive too
+# Only flag markets where the backtest held up. Over/under 2.5 edges lost ~7% over three seasons,
+# so they are shown but never flagged. Re-check with `python -m pipeline.tune` each season.
+FLAG_KINDS = {"1x2", "dc"}
 
 SETS = {"1x2": ("home", "draw", "away"), "ou25": ("over", "under")}
 
@@ -60,7 +63,7 @@ def price_market(mid: str, group: str, label: str, p: float, odds: dict, olook) 
     edge_model = p * best_eff - 1
     edge_blend = blended * best_eff - 1
     tier = None
-    if edge_blend >= MIN_BLENDED_EDGE and edge_model >= MIN_MODEL_EDGE:
+    if kind in FLAG_KINDS and edge_blend >= MIN_BLENDED_EDGE and edge_model >= MIN_MODEL_EDGE:
         tier = "strong" if edge_blend >= 0.10 else ("good" if edge_blend >= 0.05 else "small")
     m.update({
         "odds": {b: round(v, 2) for b, v in sorted(prices.items(), key=lambda kv: -kv[1])},

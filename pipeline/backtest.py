@@ -12,7 +12,7 @@ from .config import season_label
 from .model import expected_counts, goal_markets, league_baseline, p_over, referee_profile, team_rows, team_strength
 from .pricing import effective, market_fair, price_market
 
-MIN_GAMES = 4
+MIN_GAMES = 2
 BUCKETS = [(0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.0)]
 
 
@@ -41,6 +41,9 @@ def run_backtest(seasons: dict, current_start: int, n_seasons: int = 3) -> dict:
         prev = seasons.get(y - 1, [])
         refs_hist = [m for yy in seasons if yy < y for m in seasons[yy]]
         base_cache: dict = {}
+        prev_base = league_baseline(prev) if prev else None
+        prev_teams = {t for m in prev for t in (m["home"], m["away"])}
+        prior = {t: team_rows(prev, t) for t in prev_teams}
         for i, m in enumerate(cur):
             before = cur[:i]
             hr, ar = team_rows(before, m["home"]), team_rows(before, m["away"])
@@ -53,7 +56,8 @@ def run_backtest(seasons: dict, current_start: int, n_seasons: int = 3) -> dict:
             base = base_cache[day]
             if not base.get("goals") or not base.get("cards"):
                 continue
-            hs, as_ = team_strength(hr, base), team_strength(ar, base)
+            hs = team_strength(hr, base, prior.get(m["home"]), prev_base, promoted=bool(prev) and m["home"] not in prev_teams)
+            as_ = team_strength(ar, base, prior.get(m["away"]), prev_base, promoted=bool(prev) and m["away"] not in prev_teams)
             ref = referee_profile(refs_hist + before, m.get("referee"), base)
             exp = expected_counts(hs, as_, base, ref)
             gm = goal_markets(*exp["goals"])

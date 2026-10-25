@@ -113,29 +113,61 @@ def league_baseline(matches: list[dict]) -> dict:
     return base
 
 
-def shrink(ratio: float | None, n: int, k: float = 6.0) -> float:
+# Tunable settings (chosen with the walk-forward backtest, see pipeline/tune.py)
+PARAMS = {
+    "prior_games": 30.0,     # how many games' worth of weight last season's rating gets
+    "regress": 0.65,         # how much of last season's edge carries over (rest regresses to average)
+    "no_prior_games": 6.0,   # shrink-to-average weight when a team has no prior season
+    "xg_weight": 0.5,        # goal ratings: share from xG vs actual goals
+    "promoted_att": 0.85,    # promoted teams: assumed attack vs league average
+    "promoted_def": 1.15,    # ...and defence (1.15 = concede 15% more)
+}
+ATTACKING = {"goals", "xg", "shots", "sot", "corners"}
+
+
+def shrink(ratio: float | None, n: int, k: float = 6.0, target: float = 1.0) -> float:
     if ratio is None:
-        return 1.0
+        return target
     w = n / (n + k)
-    return 1 + (ratio - 1) * w
+    return target + (ratio - target) * w
 
 
-def team_strength(rows: list[dict], base: dict) -> dict:
-    """Attack (for) and defence (against) ratios vs league average, shrunk by sample size."""
-    n = len(rows)
-    out = {"n": n}
+def _raw_ratios(rows: list[dict], base: dict) -> dict:
+    out = {}
     for k in ["goals", "xg", "shots", "sot", "corners", "fouls", "cards"]:
         lg = (base.get(k) or {}).get("mean")
-        if not lg:
-            out[k] = (1.0, 1.0)
-            continue
         f, a = avg(rows, k + "_for"), avg(rows, k + "_against")
-        out[k] = (shrink(f / lg if f is not None else None, n), shrink(a / lg if a is not None else None, n))
-    # goal attack/defence blends xG (more stable) with actual goals
-    if base.get("xg") and avg(rows, "xg_for") is not None:
+        out[k] = (f / lg if lg and f is not None else None, a / lg if lg and a is not None else None)
+    return out
+
+
+def team_strength(rows: list[dict], base: dict, prior_rows: list[dict] | None = None,
+                  prior_base: dict | None = None, promoted: bool = False) -> dict:
+    """Attack (for) and defence (against) ratios vs league average.
+
+    Early in a season the ratings lean on last season (regressed to average); promoted teams
+    start from a weaker prior. As games are played the current season takes over.
+    """
+    P = PARAMS
+    n = len(rows)
+    cur = _raw_ratios(rows, base)
+    prev = _raw_ratios(prior_rows, prior_base or base) if prior_rows else None
+    out = {"n": n}
+    for k, (f, a) in cur.items():
+        if prev and prev[k][0] is not None:
+            tf = 1 + (prev[k][0] - 1) * P["regress"]
+            ta = 1 + (prev[k][1] - 1) * P["regress"]
+            kk = P["prior_games"]
+        else:
+            tf = P["promoted_att"] if (promoted and k in ATTACKING) else 1.0
+            ta = P["promoted_def"] if (promoted and k in ATTACKING) else 1.0
+            kk = P["no_prior_games"]
+        out[k] = (shrink(f, n, kk, tf), shrink(a, n, kk, ta))
+    w = P["xg_weight"]
+    if base.get("xg") and cur["xg"][0] is not None:
         ga, gd = out["goals"]
         xa, xd = out["xg"]
-        out["goal_att"], out["goal_def"] = 0.6 * xa + 0.4 * ga, 0.6 * xd + 0.4 * gd
+        out["goal_att"], out["goal_def"] = w * xa + (1 - w) * ga, w * xd + (1 - w) * gd
     else:
         out["goal_att"], out["goal_def"] = out["goals"]
     return out
