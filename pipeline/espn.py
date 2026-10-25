@@ -41,7 +41,23 @@ def _event(e: dict) -> dict:
         "home": _team(teams["home"]), "away": _team(teams["away"]),
         "score": [teams["home"].get("score"), teams["away"].get("score")],
         "venue": (comp.get("venue") or {}).get("fullName"),
+        "stats": {side: _team_stats(teams[side]) for side in ("home", "away")},
     }
+
+
+TEAM_STATS = {"foulsCommitted": "fouls", "wonCorners": "corners", "shotsOnTarget": "sot", "totalShots": "shots"}
+
+
+def _team_stats(c: dict) -> dict:
+    out = {}
+    for s in c.get("statistics") or []:
+        k = TEAM_STATS.get(s.get("name"))
+        try:
+            if k:
+                out[k] = float(s.get("displayValue"))
+        except (TypeError, ValueError):
+            pass
+    return out
 
 
 def season_events(slug: str, start: dt.date, end: dt.date) -> list[dict]:

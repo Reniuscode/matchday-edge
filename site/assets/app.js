@@ -500,6 +500,45 @@ function pageAccas() {
     <p class="note">Player legs only include regular starters (60+ expected minutes) with at least 4 games of data. Bookmakers often price accas and player props with extra margin, so compare the fair odds with what you're offered.</p>${RG}`;
 }
 
+// ---- results of past suggestions
+const RES_ICON = { won: "✓", lost: "✗", void: "–" };
+const resPill = (st) => `<span class="pill res-${st}">${{ won: "Won", lost: "Lost", void: "Void", pending: "Pending" }[st] || st}</span>`;
+function legRow(l) {
+  const st = l.result || "pending";
+  return `<div class="acca-leg"><div><span class="ri ri-${st}">${RES_ICON[st] || "•"}</span><b>${esc(l.label)}</b><small>${esc(l.match)} · model ${pct(l.p)}${l.odds ? ` · ${l.odds.toFixed(2)} ${esc(l.book || "")}` : ""}${st === "void" ? " · didn't play, leg void" : ""}</small></div></div>`;
+}
+function betBlock(title, bet) {
+  if (!bet) return "";
+  return `<div class="res-bet"><div class="res-bet-h"><h3>${title}</h3><div style="display:flex;gap:6px;align-items:center">${bet.odds ? `<span class="pill">@ ${bet.odds.toFixed(2)}</span>` : `<span class="pill">fair ${fair(bet.p)}</span>`}${resPill(bet.status)}</div></div>
+    <div class="acca-legs">${bet.legs.map(legRow).join("")}</div></div>`;
+}
+function summaryCard(title, s, kind) {
+  if (!s || (!s.bets && !s.pending)) return `<div class="card"><div class="card-h"><h3>${title}</h3></div><div class="card-b note">Nothing settled yet.</div></div>`;
+  const profit = s.priced ? `<div class="kpi"><b style="color:${s.profit >= 0 ? "var(--accent)" : "var(--loss)"}">${s.profit >= 0 ? "+" : ""}${fx2(s.profit, 1)}</b><span>Units (${s.priced} priced)</span></div>` : `<div class="kpi"><b>${s.legs_won}/${s.legs}</b><span>Legs landed</span></div>`;
+  return `<div class="card"><div class="card-h"><h3>${title}</h3>${s.pending ? `<span class="pill">${s.pending} pending</span>` : ""}</div><div class="card-b">
+    <div class="acca-sum" style="margin-top:0"><div class="kpi"><b>${s.won}/${s.bets}</b><span>${kind === "singles" ? "Bets won" : "Accas won"}</span></div>
+    <div class="kpi"><b>${fx2(s.expected_wins, 1)}</b><span>Model expected</span></div>${profit}</div>
+    <p class="note" style="margin-bottom:0">${kind === "singles" ? `Profit is 1 unit per bet at the best price listed.` : `Individual legs landed ${s.legs_won} of ${s.legs} times; the model expected ${fx2(s.legs_expected, 1)}.`}${s.roi != null ? ` ROI ${s.roi >= 0 ? "+" : ""}${pct(s.roi, 1)}.` : ""}</p></div></div>`;
+}
+function pageResults() {
+  const r = DATA.results;
+  if (!r || !r.days.length) return `<div class="empty-state"><h2>No results yet</h2><p>Picks are saved before each matchday and settled after full time.</p></div>${RG}`;
+  const s = r.summary;
+  const firstLive = r.days.filter((d) => !d.simulated).map((d) => d.date).sort()[0];
+  return `<div class="page-head"><div><h1>Results</h1><p>How the site's suggested bets did. Each day's banker acca, value acca and value singles are saved before the first game kicks off, then settled automatically from the match and player stats. Player legs are void if the player didn't play, the same as at most bookies.</p>
+    <p>Days marked <span class="pill warn">re-created</span> come from before live tracking began${firstLive ? ` on ${new Date(firstLive).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}` : ""}: the model was re-run using only data from before that day, with football-data's pre-match prices.</p></div></div>
+    <div class="grid g3">${summaryCard("Banker accas", s.banker, "acca")}${summaryCard("Value accas", s.value_acca, "acca")}${summaryCard("Value singles", s.singles, "singles")}</div>
+    ${r.days.filter((d) => d.banker || d.value_acca || (d.singles || []).length).map((d) => {
+      const any = true;
+      return `<div class="card res-day"><div class="card-h"><h3>${new Date(d.date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}</h3>
+        <div style="display:flex;gap:6px">${d.simulated ? `<span class="pill warn">re-created</span>` : `<span class="pill accent">saved live</span>`}<span class="pill">${d.matches} match${d.matches === 1 ? "" : "es"}</span></div></div>
+        <div class="card-b">${any ? `<div class="grid g3">${betBlock("Banker acca", d.banker)}${betBlock("Value acca", d.value_acca)}
+          ${(d.singles || []).length ? `<div class="res-bet"><div class="res-bet-h"><h3>Value singles</h3></div><div class="acca-legs">${d.singles.map((b) => `<div class="acca-leg"><div><span class="ri ri-${b.status}">${RES_ICON[b.status] || "•"}</span><b>${esc(b.legs[0].label)}</b><small>${esc(b.legs[0].match)} · model ${pct(b.p)}</small></div><div style="text-align:right"><b>${b.odds ? b.odds.toFixed(2) : "–"}</b><small>${b.profit != null ? `${b.profit >= 0 ? "+" : ""}${fx2(b.profit)} u` : "pending"}</small></div></div>`).join("")}</div></div>` : ""}
+        </div>` : `<div class="note">No suggestions this day (not enough qualifying legs).</div>`}</div></div>`;
+    }).join("")}
+    <p class="note">Small samples swing a lot: judge this over months, not weekends. ${RG}</p>`;
+}
+
 // ---- track record
 function pageRecord() {
   const bt = DATA.backtest;
@@ -568,7 +607,7 @@ function pageAbout() {
 function route() {
   const [, page = "", id, tab] = location.hash.split("/");
   document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("on", a.dataset.r === (page || "fixtures") || (page === "match" && a.dataset.r === "fixtures")));
-  const html = page === "match" ? pageMatch(id, tab) : page === "value" ? pageValue() : page === "accas" ? pageAccas() : page === "record" ? pageRecord() : page === "about" ? pageAbout() : pageFixtures();
+  const html = page === "match" ? pageMatch(id, tab) : page === "value" ? pageValue() : page === "accas" ? pageAccas() : page === "results" ? pageResults() : page === "record" ? pageRecord() : page === "about" ? pageAbout() : pageFixtures();
   app.innerHTML = html;
   bind();
 }

@@ -277,3 +277,16 @@ svg text { fill: var(--muted); font: 11px var(--body); }
   .controls { gap: 12px; }
 }
 .btn { white-space: nowrap; }
+
+/* ---------- results page */
+.res-day { margin-top: 14px; }
+.res-bet { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.res-bet-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+.res-bet-h h3 { font-size: 15px; }
+.ri { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 800; margin-right: 8px; background: var(--card-2); color: var(--muted); vertical-align: -2px; }
+.ri-won { background: var(--win); color: #06210f; }
+.ri-lost { background: var(--loss); color: #fff; }
+.ri-void { background: var(--faint); color: #fff; }
+.pill.res-won { background: rgba(47, 191, 113, .15); color: #6fe0a3; border-color: rgba(47, 191, 113, .35); }
+.pill.res-lost { background: rgba(229, 72, 77, .14); color: #ff8a8d; border-color: rgba(229, 72, 77, .35); }
+.acca-leg small { margin-left: 28px; }

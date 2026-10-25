@@ -51,3 +51,22 @@ class NoFalseMatchTests(unittest.TestCase):
     def test_relegated_team_not_matched_to_other(self):
         m = TeamMatcher(["Manchester City", "Leeds United"])
         self.assertIsNone(m.match("Leicester"))
+
+
+class SettleTests(unittest.TestCase):
+    def test_settle_team_and_player_legs(self):
+        from pipeline.picks import settle_leg
+        ev = {"completed": True, "score": ["2", "1"], "stats": {"home": {"corners": 6, "shots": 14}, "away": {"corners": 5, "shots": 9}}}
+        lines = {"home": [{"id": "7", "min": 90, "sh": 2, "sot": 1, "fc": 0, "fw": 3, "yc": 1, "rc": 0, "g": 1}], "away": []}
+        leg = lambda m: {"market": m}  # noqa: E731
+        self.assertEqual(settle_leg(leg("home"), ev, lines), "won")
+        self.assertEqual(settle_leg(leg("over_2.5"), ev, lines), "won")
+        self.assertEqual(settle_leg(leg("btts_no"), ev, lines), "lost")
+        self.assertEqual(settle_leg(leg("corners_over_10.5"), ev, lines), "won")
+        self.assertEqual(settle_leg(leg("away_corners_over_5.5"), ev, lines), "lost")
+        self.assertEqual(settle_leg(leg("home_cards_over_0.5"), ev, lines), "won")
+        self.assertEqual(settle_leg(leg("p7:sh2"), ev, lines), "won")
+        self.assertEqual(settle_leg(leg("p7:fc1"), ev, lines), "lost")
+        self.assertEqual(settle_leg(leg("p7:card"), ev, lines), "won")
+        self.assertEqual(settle_leg(leg("p9:sh1"), ev, lines), "void")
+        self.assertIsNone(settle_leg(leg("home"), {"completed": False}, None))

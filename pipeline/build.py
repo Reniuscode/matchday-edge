@@ -21,6 +21,7 @@ from .model import (PHI, PLAYER_MARKETS, avg, expected_counts, goal_markets, lea
                     player_priors, pos_group, referee_profile, team_rows, team_strength)
 from .names import TeamMatcher
 from .pricing import price_market
+from . import picks as picks_mod
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.environ.get("MDE_DATA") or os.path.join(ROOT, "data")
@@ -395,8 +396,55 @@ def build(offline: bool = False, league_key: str = "EPL"):
     log("  Backtesting...")
     bt = run_backtest(seasons, sy)  # football-data names are consistent across seasons
 
+    def backfill(day: str) -> list[dict]:
+        """Re-create a past day's fixtures using only what was known before that day (for the Results page)."""
+        evs = [e for e in done if picks_mod.uk_day(e["kickoff"]) == day]
+        if not evs:
+            return []
+        cutoff = min(e["kickoff"] for e in evs)
+        cut_iso = cutoff[:16].replace("Z", "")
+        before = [m for m in cur if m["kickoff"] < cut_iso[:10]]
+        apps_b = {t: [a for a in v if a["kickoff"] < cutoff] for t, v in team_apps.items()}
+        evs_b = {t: [eid for eid in v if by_id[eid]["kickoff"] < cutoff] for t, v in team_events.items()}
+        pri = player_priors([a["line"] for v in apps_b.values() for a in v]) or priors
+        bbase = league_baseline(before + prev if len(before) < 100 else before)
+        if not bbase.get("goals") or not bbase.get("cards"):
+            return []
+        bven = {s: {"shots": bbase["shots"][s], "sot": bbase["sot"][s], "goal_def": bbase["goals"][s],
+                    "cards": bbase["cards"][s], "fouls": 1.0, "fouls_won": 1.0} for s in ("home", "away")}
+        out = []
+        for e in evs:
+            home, away = e["home"]["name"], e["away"]["name"]
+            row = next((m for m in cur if m["home"] == home and m["away"] == away
+                        and abs((dt.date.fromisoformat(m["kickoff"][:10]) - dt.date.fromisoformat(e["kickoff"][:10])).days) <= 2), None)
+            hs = team_strength(team_rows(before, home), bbase, team_rows(prev, home), prev_base, promoted=bool(prev) and home not in prev_teams)
+            as_ = team_strength(team_rows(before, away), bbase, team_rows(prev, away), prev_base, promoted=bool(prev) and away not in prev_teams)
+            ref = referee_profile([m for m in all_hist if m["kickoff"] < cut_iso[:10]], row.get("referee") if row else None, bbase)
+            exp = expected_counts(hs, as_, bbase, ref)
+            gm = goal_markets(*exp["goals"])
+            odds = {"1x2": {}, "ou25": {}, "dc": {}, "avg": {}}
+            if row and row.get("odds"):
+                o = row["odds"]
+                odds["1x2"].update(o["1x2"]["books"])
+                odds["ou25"].update(o["ou25"]["books"])
+                odds["avg"] = {"1x2": o["1x2"]["avg"], "ou25": o["ou25"]["avg"]}
+            out.append({
+                "id": e["espn_id"], "kickoff": e["kickoff"], "home": e["home"], "away": e["away"],
+                "markets": build_markets(gm, exp, bbase, odds),
+                "players": {
+                    "home": player_table(home, apps_b.get(home, []), evs_b.get(home, []), pri, as_, bven["home"], ref, []),
+                    "away": player_table(away, apps_b.get(away, []), evs_b.get(away, []), pri, hs, bven["away"], ref, []),
+                },
+            })
+        return out
+
+    by_id = {e["espn_id"]: e for e in events}
+    log("  Updating and settling daily picks...")
+    pick_hist = picks_mod.update(os.path.join(DATA, "picks.json"), fx_out, events,
+                                 lambda eid: espn.load_event_cache(ev_cache, eid), backfill=backfill)
     out = {
         "generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "results": pick_hist,
         "league": lg["name"], "season": season_label(sy), "matches_played": len(cur),
         "league_avgs": league_avgs, "table": table, "fixtures": fx_out, "backtest": bt,
         "sources": {"fd_fixtures": len(fixtures_fd), "espn_events": len(events), "player_matches": len(done) - len(missing) if offline else len(done),
