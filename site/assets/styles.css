@@ -244,3 +244,26 @@ svg text { fill: var(--muted); font: 11px var(--body); }
   nav.tabs { margin-left: 0; width: 100%; }
   nav.tabs a { padding: 6px 10px; font-size: 13px; }
 }
+
+/* ---------- round 1 polish */
+.slip-fab[hidden] { display: none; }
+.problabels small.bk { display: block; color: var(--faint); font-size: 11px; font-weight: 600; }
+.problabels span:nth-child(2) { text-align: center; }
+.problabels span:nth-child(3) { text-align: right; }
+.vs { display: block; font: 600 10px var(--body); letter-spacing: .3px; margin-top: 1px; }
+.vs.up { color: #7fd8a6; }
+.vs.down { color: #ff9a9d; }
+.vs.flat { color: var(--faint); }
+.team-th { color: #fff !important; text-shadow: 0 1px 2px rgba(0,0,0,.5); font: 700 13px var(--display) !important; letter-spacing: .5px; }
+.stat-compare td.lbl { text-align: left; color: var(--text); font-weight: 500; }
+@media (max-width: 640px) {
+  .hero { padding: 14px; }
+  .hero-team { gap: 4px; }
+  .hero-team .sub { font-size: 12px; }
+  .hero-stats { grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; }
+  .kpi { padding: 8px 4px; }
+  .kpi b { font-size: 16px; }
+  .kpi span { font-size: 9px; letter-spacing: .2px; }
+  .dot.lg { width: 11px; height: 11px; }
+  .slip-fab { right: 12px; bottom: 12px; padding: 10px 14px; }
+}

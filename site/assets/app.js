@@ -114,6 +114,7 @@ function renderSlipFab() {
   const fab = $("#slipFab");
   $("#slipCount").textContent = slip.length;
   fab.classList.toggle("empty", slip.length === 0);
+  fab.hidden = slip.length === 0;
 }
 
 function slipMaths(legs) {
@@ -167,11 +168,25 @@ function closeDrawer() { $("#drawer").classList.remove("open"); $("#drawerBg").c
 // ------------------------------------------------------------------ shared bits
 const RG = `<div class="rg"><div class="age">18+</div><div><b>Gamble responsibly.</b> These are model estimates, not guarantees. Bookmakers build a margin into every price and most bettors lose over time. Only stake what you can afford to lose, set a limit before you start, and never chase losses. Free, confidential help: <a href="https://www.begambleaware.org" target="_blank" rel="noopener">BeGambleAware.org</a> · National Gambling Helpline 0808 8020 133 · self-exclude at <a href="https://www.gamstop.co.uk" target="_blank" rel="noopener">GAMSTOP</a>.</div></div>`;
 
-function probBar(fx) {
-  const g = (id) => fx.markets.find((m) => m.id === id)?.p ?? 0;
-  const [h, d, a] = [g("home"), g("draw"), g("away")];
-  return `<div class="probbar"><div style="flex:${h};background:${teamColor(fx.home)}"></div><div style="flex:${d};background:#4a5261"></div><div style="flex:${a};background:${teamColor(fx.away)}"></div></div>
-  <div class="problabels"><span>Home <b>${pct(h)}</b></span><span>Draw <b>${pct(d)}</b></span><span>Away <b>${pct(a)}</b></span></div>`;
+const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const colorDist = (a, b) => { const x = rgb(a), y = rgb(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+// Home and away colours that can be told apart (Liverpool v Arsenal are both red)
+function pairColors(fx) {
+  const h = teamColor(fx.home);
+  let a = teamColor(fx.away);
+  if (colorDist(h, a) < 90) {
+    const alt = fx.away.alt_color && /^[0-9a-f]{6}$/i.test(fx.away.alt_color) ? `#${fx.away.alt_color}` : null;
+    a = alt && colorDist(h, alt) >= 90 && lum(alt.slice(1)) > 0.035 ? alt : "#cfd6e0";
+  }
+  return [h, a];
+}
+function probBar(fx, withOdds = false) {
+  const m = (id) => fx.markets.find((x) => x.id === id) || {};
+  const [h, d, a] = [m("home"), m("draw"), m("away")];
+  const [hc, ac] = pairColors(fx);
+  const odds = (x) => (withOdds && x.best ? `<small class="bk">best odds ${x.best.toFixed(2)}</small>` : "");
+  return `<div class="probbar"><div style="flex:${h.p};background:${hc}"></div><div style="flex:${d.p};background:#4a5261"></div><div style="flex:${a.p};background:${ac}"></div></div>
+  <div class="problabels"><span>Home <b>${pct(h.p)}</b>${odds(h)}</span><span>Draw <b>${pct(d.p)}</b>${odds(d)}</span><span>Away <b>${pct(a.p)}</b>${odds(a)}</span></div>`;
 }
 
 function valueCount(fx) { return fx.markets.filter((m) => m.value).length; }
@@ -192,17 +207,17 @@ function pageFixtures() {
 function fxCard(fx) {
   const v = valueCount(fx);
   const xg = fx.expected.goals;
-  return `<a class="card fx" href="#/match/${fx.id}" style="--hc:${teamColor(fx.home)};--ac:${teamColor(fx.away)}">
+  return `<a class="card fx" href="#/match/${fx.id}" style="--hc:${pairColors(fx)[0]};--ac:${pairColors(fx)[1]}">
     <div class="fx-row">
       <div class="fx-team">${crest(fx.home)}<span>${esc(fx.home.short || fx.home.name)}</span></div>
       <div class="fx-time">${fmtTime(fx.kickoff)}<small>${fx.home.table ? `${ord(fx.home.table.pos)} v ${ord(fx.away.table?.pos)}` : ""}</small></div>
       <div class="fx-team away">${crest(fx.away)}<span>${esc(fx.away.short || fx.away.name)}</span></div>
     </div>
-    ${probBar(fx)}
+    ${probBar(fx, true)}
     <div class="fx-meta">
       <span class="pill">xG ${fx2(xg[0], 1)} – ${fx2(xg[1], 1)}</span>
       ${fx.referee ? `<span class="pill">🟨 ${esc(fx.referee.name)}</span>` : `<span class="pill">Referee TBC</span>`}
-      ${v ? `<span class="pill accent">${v} value</span>` : ""}
+      ${v ? `<span class="pill accent">${v} value bet${v > 1 ? "s" : ""}</span>` : ""}
       ${fx.has_odds ? "" : `<span class="pill warn">No odds yet</span>`}
     </div>
   </a>`;
@@ -211,10 +226,14 @@ const ord = (n) => (n == null ? "" : n + (["th", "st", "nd", "rd"][(n % 100 - 20
 
 // ---- match page
 const TEAM_ROWS = [
-  ["Goals", "goals_for", "goals_against"], ["Expected goals (xG)", "xg_for", "xg_against"],
-  ["Shots", "shots_for", "shots_against"], ["Shots on target", "sot_for", "sot_against"],
-  ["Corners", "corners_for", "corners_against"], ["Fouls committed / won", "fouls_for", "fouls_won"],
-  ["Cards", "cards_for", "cards_against"], ["Keeper saves", "saves_for", "saves_against"],
+  ["Goals scored", "goals_for", "goals"], ["Goals conceded", "goals_against", "goals"],
+  ["xG created", "xg_for", "xg"], ["xG conceded", "xg_against", "xg"],
+  ["Shots taken", "shots_for", "shots"], ["Shots faced", "shots_against", "shots"],
+  ["Shots on target", "sot_for", "sot"], ["Shots on target faced", "sot_against", "sot"],
+  ["Corners won", "corners_for", "corners"], ["Corners conceded", "corners_against", "corners"],
+  ["Fouls committed", "fouls_for", "fouls"], ["Fouls won", "fouls_won", "fouls"],
+  ["Cards received", "cards_for", "cards"], ["Opponent cards", "cards_against", "cards"],
+  ["Keeper saves", "saves_for", null], ["Opponent keeper saves", "saves_against", null],
 ];
 
 function pageMatch(id, tab = "overview") {
@@ -224,14 +243,14 @@ function pageMatch(id, tab = "overview") {
   const body = { overview: matchOverview, team: matchTeam, shooting: (f) => matchPlayers(f, "shooting"), fouls: (f) => matchPlayers(f, "fouls"), cards: (f) => matchPlayers(f, "cards"), markets: matchMarkets }[tab] || matchOverview;
   const e = fx.expected;
   return `
-    <div class="card hero" style="--hc:${teamColor(fx.home)};--ac:${teamColor(fx.away)}">
+    <div class="card hero" style="--hc:${pairColors(fx)[0]};--ac:${pairColors(fx)[1]}">
       <div class="hero-bg"></div>
       <div class="hero-row">
         <div class="hero-team">${crest(fx.home, "lg")}<h2>${esc(fx.home.name)}</h2>${dots(fx.home.form.map((f) => f.r), true)}<span class="sub">${fx.home.table ? `${ord(fx.home.table.pos)} · ${fx.home.table.pts} pts` : ""}</span></div>
         <div class="hero-mid"><div class="sub">${fmtShort(fx.kickoff)}</div><div class="ko">${fmtTime(fx.kickoff)}</div><div class="sub" style="font-size:12px">${esc(fx.venue || "")}</div></div>
         <div class="hero-team">${crest(fx.away, "lg")}<h2>${esc(fx.away.name)}</h2>${dots(fx.away.form.map((f) => f.r), true)}<span class="sub">${fx.away.table ? `${ord(fx.away.table.pos)} · ${fx.away.table.pts} pts` : ""}</span></div>
       </div>
-      ${probBar(fx)}
+      ${probBar(fx, true)}
       <div class="hero-stats">
         <div class="kpi"><b>${fx2(e.goals[0], 2)} – ${fx2(e.goals[1], 2)}</b><span>Expected goals</span></div>
         <div class="kpi"><b>${fx2(e.corners?.[0] + e.corners?.[1], 1)}</b><span>Expected corners</span></div>
@@ -258,24 +277,36 @@ function marketRow(fx, m) {
 
 function matchOverview(fx) {
   const value = fx.markets.filter((m) => m.value).sort((a, b) => b.edge - a.edge);
-  const likely = fx.markets.filter((m) => m.p >= 0.6 && m.p <= 0.95 && !/under_(1|0)|over_0\.5$/.test(m.id)).sort((a, b) => b.p - a.p).slice(0, 8);
+  // Strongest pick from each market type, skipping near-certainties that bookies price at ~1.05
+  const byGroup = {};
+  for (const m of fx.markets) {
+    if (m.p < 0.6 || m.p > 0.88 || /over_0\.5$|under_(0|1)\./.test(m.id)) continue;
+    const score = m.p + (m.best ? 0.05 : 0) + (m.edge > 0 ? m.edge : 0);
+    if (!byGroup[m.group] || score > byGroup[m.group].score) byGroup[m.group] = { m, score };
+  }
+  const likely = Object.values(byGroup).sort((a, b) => b.score - a.score).map((x) => x.m);
   const players = [];
   for (const side of ["home", "away"]) for (const pl of fx.players[side]) {
     if (pl.exp_min < 60 || pl.pos === "G") continue;
-    for (const k of ["sot1", "sh2", "fc1", "fw1", "card"]) {
+    for (const k of ["sot1", "sh2", "fc1", "fc2", "fw1", "fw2"]) {
       const mk = pl.markets[k];
       if (mk && mk.hit_n >= 4) players.push({ pl, k, mk, side });
     }
   }
   players.sort((a, b) => b.mk.p - a.mk.p);
-  const topPlayers = players.filter((x) => x.mk.p < 0.97).slice(0, 8);
-  const cardStars = players.filter((x) => x.k === "card").sort((a, b) => b.mk.p - a.mk.p).slice(0, 4);
+  const topPlayers = players.filter((x) => x.mk.p <= 0.9 && x.mk.hit >= 0.6).slice(0, 8);
+  const cardStars = [];
+  for (const side of ["home", "away"]) for (const pl of fx.players[side]) {
+    const mk = pl.markets.card;
+    if (mk && pl.exp_min >= 45 && pl.pos !== "G" && mk.hit_n >= 3) cardStars.push({ pl, k: "card", mk, side });
+  }
+  cardStars.sort((a, b) => b.mk.p - a.mk.p).splice(4);
   return `<div class="grid g2">
     <div class="card"><div class="card-h"><h3>Value spots</h3><span class="pill">model vs bookies</span></div>
       ${value.length ? value.map((m) => marketRow(fx, m)).join("") : `<div class="card-b note">No priced market here beats the model's fair odds by enough to flag. That's normal for most matches: the main markets are priced sharply. Player props below have no free odds feed, so compare their fair odds with your bookie.</div>`}
     </div>
     ${refereeCard(fx)}
-    <div class="card"><div class="card-h"><h3>Most likely outcomes</h3><span class="pill">team markets</span></div>
+    <div class="card"><div class="card-h"><h3>Best pick per market</h3><span class="pill">60–88% chance</span></div>
       ${likely.map((m) => marketRow(fx, m)).join("")}
     </div>
     <div class="card"><div class="card-h"><h3>Strongest player stats</h3><span class="pill">regular starters</span></div>
@@ -315,16 +346,21 @@ function hitCard(fx, side) {
 
 function matchTeam(fx) {
   const h = fx.home, a = fx.away;
-  const row = (lbl, k, k2) => {
-    const cell = (t, key) => `<td class="big">${fx2(t.season[key])}</td><td class="formstr">${(t.last5[key] || []).map((v) => v ?? "–").join("-")}</td>`;
-    return `<tr><td class="lbl l">${lbl} <small class="sub">for</small></td>${cell(h, k)}${cell(a, k)}</tr>
-            <tr><td class="lbl l">${lbl} <small class="sub">against</small></td>${cell(h, k2)}${cell(a, k2)}</tr>`;
+  const [hc, ac] = pairColors(fx);
+  const lg = DATA.league_avgs || {};
+  const vs = (v, base) => {
+    if (v == null || !base) return "";
+    const d = v / base - 1;
+    if (Math.abs(d) < 0.08) return `<span class="vs flat">avg</span>`;
+    return `<span class="vs ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"} ${Math.abs(Math.round(d * 100))}%</span>`;
   };
+  const cell = (t, key, lk) => `<td class="big">${fx2(t.season[key])}${vs(t.season[key], lg[lk]?.mean)}</td><td class="formstr">${(t.last5[key] || []).map((v) => v ?? "–").join("-")}</td>`;
   return `<div class="card"><div class="tbl-wrap"><table class="stat-compare">
-    <thead><tr><th class="l">Per game</th><th colspan="2" style="color:${teamColor(h)}">${esc(h.name)}</th><th colspan="2" style="color:${teamColor(a)}">${esc(a.name)}</th></tr>
-    <tr><th></th><th>Season avg</th><th>Last 5</th><th>Season avg</th><th>Last 5</th></tr></thead>
-    <tbody>${TEAM_ROWS.map(([l, k, k2]) => row(l, k, k2)).join("")}</tbody></table></div>
-    <div class="card-b note">Last 5 reads oldest → newest. Fouls "against" means fouls the team won (committed by opponents). Saves are estimated from shots on target minus goals. Season: ${h.played} and ${a.played} games.</div></div>
+    <thead><tr><th class="l sticky-col" rowspan="2">Per game</th><th rowspan="2" title="League average per team per game">League</th>
+      <th colspan="2" class="team-th" style="background:${hc}">${esc(h.short || h.name)}</th><th colspan="2" class="team-th" style="background:${ac}">${esc(a.short || a.name)}</th></tr>
+    <tr><th>Season</th><th>Last 5</th><th>Season</th><th>Last 5</th></tr></thead>
+    <tbody>${TEAM_ROWS.map(([l, k, lk]) => `<tr><td class="lbl l sticky-col">${l}</td><td class="sub">${lk && lg[lk] ? fx2(lg[lk].mean) : "–"}</td>${cell(h, k, lk)}${cell(a, k, lk)}</tr>`).join("")}</tbody></table></div>
+    <div class="card-b note">▲/▼ compare each team with the league average. Last 5 reads oldest → newest. Keeper saves are estimated from shots on target minus goals. Based on ${h.played} and ${a.played} league games this season.</div></div>
     <div class="grid g2" style="margin-top:14px">${hitCard(fx, "home")}${hitCard(fx, "away")}</div>`;
 }
 
@@ -333,6 +369,7 @@ const PLAYER_VIEWS = {
   fouls: [{ stat: "fc", title: "Fouls committed", keys: ["fc1", "fc2"] }, { stat: "fw", title: "Fouls won", keys: ["fw1", "fw2"] }],
   cards: [{ stat: "card", title: "Cards", keys: ["card"] }, { stat: "g", title: "Goals", keys: ["goal"] }],
 };
+let showAllPlayers = false;
 const KEY_SHORT = { sh1: "1+", sh2: "2+", sot1: "1+", sot2: "2+", fc1: "1+", fc2: "2+", fw1: "1+", fw2: "2+", card: "Card", goal: "Score" };
 
 function matchPlayers(fx, view) {
@@ -340,8 +377,10 @@ function matchPlayers(fx, view) {
   const sortKey = blocks[0].keys[0];
   const table = (side) => {
     const t = fx[side];
-    const players = fx.players[side].filter((p) => p.pos !== "G")
+    const all = fx.players[side].filter((p) => p.pos !== "G")
       .sort((a, b) => (b.exp_min > 0) - (a.exp_min > 0) || (b.markets[sortKey]?.p ?? 0) - (a.markets[sortKey]?.p ?? 0));
+    const players = showAllPlayers ? all : all.filter((p) => p.exp_min >= 30).slice(0, 12);
+    const hidden = all.length - players.length;
     return `<div class="card" style="margin-bottom:14px"><div class="team-band" style="background:${teamColor(t)}">${crest(t)}${esc(t.name)}</div><div class="tbl-wrap"><table>
       <thead><tr><th class="l sticky-col" rowspan="2">Player</th><th rowspan="2" title="Expected minutes / appearances">Mins</th>
         ${blocks.map((b) => `<th colspan="${2 + b.keys.length * 2}" style="border-left:1px solid var(--line)">${b.title}</th>`).join("")}</tr>
@@ -351,7 +390,7 @@ function matchPlayers(fx, view) {
         <td>${p.exp_min}<small class="sub"> /${p.apps}</small></td>
         ${blocks.map((b) => `<td style="border-left:1px solid var(--line)">${fx2(p.per_game[b.stat])}</td><td class="formstr">${(p.last5[b.stat] || []).join("-")}</td>
           ${b.keys.map((k) => { const mk = p.markets[k]; if (!mk) return "<td>–</td><td>–</td>"; return `<td>${heat(mk.hit)}</td><td><div style="display:flex;gap:6px;align-items:center;justify-content:center">${heat(mk.p)}${p.exp_min > 0 ? addBtn(`${fx.id}|p${p.id}:${k}`, true) : ""}</div><small class="sub">${fair(mk.p)}</small></td>`; }).join("")}`).join("")}
-      </tr>`).join("")}</tbody></table></div></div>`;
+      </tr>`).join("")}</tbody></table></div>${hidden > 0 || showAllPlayers ? `<div class="card-b" style="padding:10px 16px"><button class="btn" data-showall>${showAllPlayers ? "Show regular players only" : `Show ${hidden} more (bench, injured, rarely used)`}</button></div>` : ""}</div>`;
   };
   return `<p class="note" style="margin-top:0">Hit = how often the player reached it this season (games with 45+ minutes). Model = chance for <b>this</b> match, adjusted for opponent, venue, referee, expected minutes and injury news. Small number under the model figure = fair odds; a bookie price above it is value by the model.</p>
     ${table("home")}${table("away")}`;
@@ -401,7 +440,8 @@ const ACCA_GROUPS = ["Result", "Goals", "Corners", "Cards", "Shots on target", "
 let accaCfg = store.get("mde-acca", { legs: 4, minP: 0.7, groups: ["Result", "Goals", "Corners", "Players"] });
 
 function accaPool() {
-  return LEGS.filter((l) => accaCfg.groups.includes(l.group) && l.p >= accaCfg.minP && l.p <= 0.97 &&
+  // Legs above 90% pay so little (≈1.05) that they only add bookmaker margin, so they're left out
+  return LEGS.filter((l) => accaCfg.groups.includes(l.group) && l.p >= accaCfg.minP && l.p <= 0.9 &&
     (l.kind === "team" || (l.exp_min >= 60 && l.hit_n >= 4 && l.hit >= accaCfg.minP - 0.15)) &&
     !/(^under_0|over_0\.5$)/.test(l.key.split("|")[1]));
 }
@@ -423,19 +463,20 @@ function accaCard(title, blurb, legs) {
 function pageAccas() {
   const pool = accaPool();
   const banker = pickPerMatch(pool, (l) => l.p);
-  const value = pickPerMatch(pool.filter((l) => l.edge != null && l.edge > 0), (l) => l.edge);
+  // Value legs are usually bigger prices, so they ignore the minimum-chance slider (but stay above 30%)
+  const value = pickPerMatch(LEGS.filter((l) => l.value && l.p >= 0.3), (l) => l.edge).slice(0, 3);
   const bigger = pickPerMatch(pool, (l) => (l.p < accaCfg.minP + 0.12 ? l.p : null));
   return `<div class="page-head"><div><h1>Acca builder</h1><p>Builds accumulators from one leg per match so the legs don't depend on each other. Set how safe each leg must be. The "chance all win" figure is what really matters: four 75% legs only land about 32% of the time.</p></div></div>
     <div class="card controls">
       <div class="ctl"><label>Legs: <b id="lv">${accaCfg.legs}</b></label><input type="range" min="2" max="8" value="${accaCfg.legs}" id="legsR"></div>
-      <div class="ctl"><label>Min chance per leg: <b id="pv">${pct(accaCfg.minP)}</b></label><input type="range" min="0.5" max="0.92" step="0.01" value="${accaCfg.minP}" id="minR"></div>
+      <div class="ctl"><label>Min chance per leg: <b id="pv">${pct(accaCfg.minP)}</b></label><input type="range" min="0.5" max="0.88" step="0.01" value="${accaCfg.minP}" id="minR"></div>
       <div class="ctl"><label>Markets</label><div class="chips">${ACCA_GROUPS.map((g) => `<button class="chip ${accaCfg.groups.includes(g) ? "on" : ""}" data-g="${g}">${g}</button>`).join("")}</div></div>
       <span class="pill">${pool.length} eligible legs</span>
     </div>
     <div class="grid g3" style="margin-top:14px">
       ${accaCard("Banker acca", "The most likely leg from each match.", banker)}
       ${accaCard("Bigger price", `Legs just above ${pct(accaCfg.minP)}, for a longer price.`, bigger)}
-      ${accaCard("Value acca", "Legs where the bookie's price beats our estimate.", value)}
+      ${accaCard("Value treble", "Up to three flagged value bets, any chance above 30%. Long odds and high risk, but every leg is priced above our fair odds.", value)}
     </div>
     <p class="note">Player legs only include regular starters (60+ expected minutes) with at least 4 games of data. Bookmakers often price accas and player props with extra margin, so compare the fair odds with what you're offered.</p>${RG}`;
 }
@@ -527,6 +568,7 @@ function bind() {
     history.replaceState(null, "", `#/match/${id}/${b.dataset.tab}`);
     route();
   }));
+  app.querySelectorAll("[data-showall]").forEach((b) => (b.onclick = () => { showAllPlayers = !showAllPlayers; route(); }));
   const legsR = $("#legsR"), minR = $("#minR");
   if (legsR) {
     legsR.oninput = () => { accaCfg.legs = +legsR.value; store.set("mde-acca", accaCfg); route(); };

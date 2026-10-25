@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import sys
 from statistics import mean
@@ -76,23 +77,33 @@ TEAM_STAT_KEYS = ["goals_for", "goals_against", "xg_for", "xg_against", "shots_f
                   "sot_against", "corners_for", "corners_against", "fouls_for", "fouls_won", "cards_for",
                   "cards_against", "saves_for", "saves_against"]
 
-HIT_RATES = [
-    ("o25", "Over 2.5 goals", lambda r: r["goals_for"] + r["goals_against"] > 2.5),
-    ("btts", "Both teams score", lambda r: r["goals_for"] > 0 and r["goals_against"] > 0),
-    ("o95c", "Over 9.5 corners", lambda r: r["corners_for"] + r["corners_against"] > 9.5),
-    ("o35k", "Over 3.5 cards", lambda r: r["cards_for"] + r["cards_against"] > 3.5),
-    ("o205s", "Over 20.5 shots", lambda r: r["shots_for"] + r["shots_against"] > 20.5),
-    ("o85t", "Over 8.5 shots on target", lambda r: r["sot_for"] + r["sot_against"] > 8.5),
-]
+def half_line_below(mean: float) -> float:
+    """The .5 betting line just under the league average, so hit rates sit near 50% and mean something."""
+    f = math.floor(mean)
+    return f + 0.5 if mean - f >= 0.5 else f - 0.5
 
 
-def team_block(info: dict, rows: list[dict], table: dict) -> dict:
+def hit_rate_defs(base: dict) -> list:
+    tot = lambda k, d: (base.get(k) or {}).get("mean", d / 2) * 2  # noqa: E731
+    c, k, s, t = (half_line_below(tot("corners", 10)), half_line_below(tot("cards", 4)),
+                  half_line_below(tot("shots", 25)), half_line_below(tot("sot", 8.5)))
+    return [
+        ("o25", "Over 2.5 goals", lambda r: r["goals_for"] + r["goals_against"] > 2.5),
+        ("btts", "Both teams score", lambda r: r["goals_for"] > 0 and r["goals_against"] > 0),
+        ("corners", f"Over {c} corners", lambda r: r["corners_for"] + r["corners_against"] > c),
+        ("cards", f"Over {k} cards", lambda r: r["cards_for"] + r["cards_against"] > k),
+        ("shots", f"Over {s} shots", lambda r: r["shots_for"] + r["shots_against"] > s),
+        ("sot", f"Over {t} shots on target", lambda r: r["sot_for"] + r["sot_against"] > t),
+    ]
+
+
+def team_block(info: dict, rows: list[dict], table: dict, hit_defs: list) -> dict:
     last5 = rows[-5:]
     season = {k: _r(avg(rows, k)) for k in TEAM_STAT_KEYS}
     form = {k: [_r(r.get(k), 0) for r in last5] for k in TEAM_STAT_KEYS}
     l5avg = {k: _r(avg(last5, k)) for k in TEAM_STAT_KEYS}
     hits = {}
-    for key, label, f in HIT_RATES:
+    for key, label, f in hit_defs:
         ok = []
         for r in rows:
             try:
@@ -204,16 +215,14 @@ def player_table(team: str, apps: list[dict], team_events: list[str], priors: di
             lam = rate * exp_min / 90 * factor
             p = p_at_least(n, lam, PHI.get(stat, 1.0))
             hits = sum(1 for l in hit_lines if (l.get(stat) or 0) >= n)
-            markets[key] = {"p": round(p, 4), "hit": round(hits / len(hit_lines), 3), "hit_n": len(hit_lines),
-                            "lam": round(lam, 3)}
+            markets[key] = {"p": round(p, 3), "hit": round(hits / len(hit_lines), 2), "hit_n": len(hit_lines)}
         out.append({
             "id": pid, "name": last["name"], "short": last.get("short") or last["name"], "pos": group,
             "apps": len(lines), "starts": int(sum(l.get("start", 0) for l in lines)), "mins": int(mins),
             "avg_min": round(mins / len(lines)), "exp_min": round(exp_min), "status": status, "note": note,
-            "tot": {k: _r(v, 2) for k, v in tot.items()},
+            "tot": {k: int(tot[k]) for k in ("g", "a", "card")},
             "per_game": {k: _r(tot[k] / len(lines), 2) for k in ("sh", "sot", "fc", "fw", "card", "g", "a")},
-            "per90": {k: _r(tot[k] / (mins / 90), 2) if mins else None for k in ("sh", "sot", "fc", "fw", "card", "g", "a")},
-            "last5": {k: [int(l.get(k) or 0) for l in last5] for k in ("sh", "sot", "fc", "fw", "card", "g", "a", "min")},
+            "last5": {k: [int(l.get(k) or 0) for l in last5] for k in ("sh", "sot", "fc", "fw", "card", "g")},
             "markets": markets,
         })
     out.sort(key=lambda p: (-p["exp_min"], -p["mins"]))
@@ -305,6 +314,7 @@ def build(offline: bool = False, league_key: str = "EPL"):
     base_matches = cur if len(cur) >= 100 else cur + prev
     base = league_baseline(base_matches)
     table = league_table(cur)
+    hit_defs = hit_rate_defs(base)
     prev_base = league_baseline(prev) if prev else None
     prev_teams = {t for m in prev for t in (m["home"], m["away"])}
     venue = {
@@ -371,7 +381,7 @@ def build(offline: bool = False, league_key: str = "EPL"):
         }
         fx_out.append({
             "id": e["espn_id"], "kickoff": e["kickoff"], "venue": e.get("venue"),
-            "home": team_block(h_info, hrows, table), "away": team_block(a_info, arows, table),
+            "home": team_block(h_info, hrows, table, hit_defs), "away": team_block(a_info, arows, table, hit_defs),
             "referee": {"name": ref_name, "season": _ref_out(ref_cur), "career": _ref_out(ref_all)} if ref_name else None,
             "expected": {k: [_r(v[0]), _r(v[1])] for k, v in exp.items()},
             "top_scores": [{"score": s["score"], "p": _r(s["p"], 4)} for s in gm["top_scores"]],
