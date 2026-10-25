@@ -383,7 +383,7 @@ def build(offline: bool = False, league_key: str = "EPL"):
     league_avgs = {k: {"mean": _r(v["mean"]), "home": _r(v["home"], 3), "phi": _r(v["phi"], 3)}
                    for k, v in base.items() if isinstance(v, dict)}
     log("  Backtesting...")
-    bt = run_backtest({y: rename(seasons[y], matcher) for y in seasons}, sy)
+    bt = run_backtest(seasons, sy)  # football-data names are consistent across seasons
 
     out = {
         "generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),

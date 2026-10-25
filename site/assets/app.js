@@ -379,10 +379,11 @@ function pageValue() {
   return `<div class="page-head"><div><h1>Value bets</h1><p>Prices where the bookmaker pays more than our estimate says they should. To be conservative, the edge uses a 50/50 blend of our model and the market's own view, and the bet has to clear both.</p>
     ${DATA.backtest?.bets?.count ? `<p>Honest check: over ${DATA.backtest.seasons.join(", ")} the same rule flagged ${DATA.backtest.bets.count} bets, which returned <b>${DATA.backtest.bets.roi >= 0 ? "+" : ""}${pct(DATA.backtest.bets.roi, 1)}</b> per bet. Roughly break-even beats the ~5% most bettors lose to the margin, but it is not a money machine. <a href="#/record" style="text-decoration:underline">See the track record</a>.</p>` : ""}</div></div>
     <div class="card"><div class="card-h"><h3>Singles</h3><span class="pill">${vals.length} found</span></div>
-      ${vals.length ? `<div class="tbl-wrap"><table><thead><tr><th class="l">Match</th><th class="l">Pick</th><th>Model</th><th>Market</th><th>Best price</th><th>Edge</th><th></th></tr></thead><tbody>
-        ${vals.map((l) => `<tr><td class="l"><a href="#/match/${l.fx}">${esc(l.match)}</a><br><small class="sub">${fmtShort(l.kickoff)} ${fmtTime(l.kickoff)}</small></td><td class="l"><b>${esc(l.label)}</b> <span class="vbadge ${l.value}">${l.value}</span></td>
-        <td>${pct(l.p)}</td><td>${pct(l.market_p)}</td><td><b>${l.odds.toFixed(2)}</b><br><small class="sub">${esc(l.book)}</small></td><td class="edge pos">+${pct(l.edge, 1)}</td><td>${addBtn(l.key, true)}</td></tr>`).join("")}
-      </tbody></table></div>` : `<div class="card-b note">No value singles this round. The free odds feed covers match result, double chance and over/under 2.5, which are the sharpest markets. Use the player props list below with your bookie's prices instead.</div>`}
+      ${vals.length ? `${vals.map((l) => `<div class="mkt">
+        <div class="name">${esc(l.label)} <span class="vbadge ${l.value}">${l.value}</span><small><a href="#/match/${l.fx}" style="text-decoration:underline">${esc(l.match)}</a> · ${fmtShort(l.kickoff)} ${fmtTime(l.kickoff)} · market ${pct(l.market_p)} · edge <span class="edge pos">+${pct(l.edge, 1)}</span></small></div>
+        <div class="prob">${pct(l.p)}<small>model</small></div>
+        <div class="odds"><b>${l.odds.toFixed(2)}</b><small>${esc(l.book)}</small></div>
+        ${addBtn(l.key)}</div>`).join("")}` : `<div class="card-b note">No value singles this round. The free odds feed covers match result, double chance and over/under 2.5, which are the sharpest markets. Use the player props list below with your bookie's prices instead.</div>`}
     </div>
     ${doubles.length ? `<div class="card" style="margin-top:14px"><div class="card-h"><h3>Suggested doubles</h3><span class="pill">two value picks, different matches</span></div>
       ${doubles.slice(0, 4).map((d) => `<div class="mkt"><div class="name">${esc(d.a.label)} + ${esc(d.b.label)}<small>${esc(d.a.match)} · ${esc(d.b.match)}</small></div>

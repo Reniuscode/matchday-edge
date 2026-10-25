@@ -73,7 +73,7 @@ class TeamMatcher:
         k = team_key(name)
         if k in self.by_key:
             return self.by_key[k]
-        close = difflib.get_close_matches(k, list(self.by_key), n=1, cutoff=0.72)
+        close = difflib.get_close_matches(k, list(self.by_key), n=1, cutoff=0.88)
         return self.by_key[close[0]] if close else None
 
 

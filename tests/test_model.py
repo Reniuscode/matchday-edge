@@ -45,3 +45,9 @@ class NameTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoFalseMatchTests(unittest.TestCase):
+    def test_relegated_team_not_matched_to_other(self):
+        m = TeamMatcher(["Manchester City", "Leeds United"])
+        self.assertIsNone(m.match("Leicester"))
