@@ -63,6 +63,7 @@ const PLAYER_LABELS = {
 function buildLegs() {
   const legs = [];
   for (const fx of DATA.fixtures) {
+    if (fx.started) continue; // can't bet pre-match on a game that has kicked off
     for (const m of fx.markets) {
       legs.push({
         key: `${fx.id}|${m.id}`, fx: fx.id, match: fxName(fx), kickoff: fx.kickoff, kind: "team", group: m.group,
@@ -149,7 +150,7 @@ function renderDrawer() {
       <div class="sum-row big"><span>Expected return per £10</span><b style="color:${m.ev == null ? "var(--text)" : m.ev >= 0 ? "var(--accent)" : "var(--loss)"}">${m.ev == null ? "–" : `£${(10 * (1 + m.ev)).toFixed(2)}`}</b></div>
       ${m.ev != null ? `<p class="note">${m.ev >= 0 ? `The odds beat the model's fair price by ${pct(m.ev, 1)}.` : `The bookmaker's price is ${pct(-m.ev, 1)} worse than the model's fair price.`} Every extra leg multiplies the bookmaker's margin.</p>` : ""}
       ${m.sameGame ? `<div class="warn-box">Two or more legs are from the same match. These outcomes are linked (e.g. shots and goals), so the combined chance shown is only a rough guide, and bookmakers price bet builders differently.</div>` : ""}
-      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="clearSlip">Clear</button></div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="clearSlip">Clear</button><button class="btn" id="copySlip">Copy slip</button></div>
     </div>` : ""}`;
   $("#closeDrawer").onclick = closeDrawer;
   d.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => { slip.splice(+b.dataset.rm, 1); saveSlip(); renderDrawer(); route(); }));
@@ -161,6 +162,12 @@ function renderDrawer() {
   }));
   const c = $("#clearSlip");
   if (c) c.onclick = () => { slip = []; saveSlip(); renderDrawer(); route(); };
+  const cp = $("#copySlip");
+  if (cp) cp.onclick = async () => {
+    const txt = slip.map((l) => `${l.label} (${l.match})${l.odds ? ` @ ${l.odds}` : ""}`).join("\n") +
+      `\nModel chance ${pct(m.p, 1)} · fair odds ${m.fair ? m.fair.toFixed(2) : "-"}${m.odds ? ` · your odds ${m.odds.toFixed(2)}` : ""}`;
+    try { await navigator.clipboard.writeText(txt); toast("Slip copied"); } catch { toast("Couldn't copy on this browser"); }
+  };
 }
 function openDrawer() { renderDrawer(); $("#drawer").classList.add("open"); $("#drawerBg").classList.add("open"); }
 function closeDrawer() { $("#drawer").classList.remove("open"); $("#drawerBg").classList.remove("open"); }
@@ -196,7 +203,9 @@ function pageFixtures() {
   const fxs = DATA.fixtures;
   if (!fxs.length) return `<div class="empty-state"><h2>No fixtures yet</h2><p>The next round appears here once it is scheduled.</p></div>${RG}`;
   const byDay = {};
-  for (const fx of fxs) (byDay[fmtDay(fx.kickoff)] ||= []).push(fx);
+  for (const fx of fxs.filter((f) => !f.started)) (byDay[fmtDay(fx.kickoff)] ||= []).push(fx);
+  const started = fxs.filter((f) => f.started);
+  if (started.length) byDay["Kicked off"] = started;
   return `
     <div class="page-head"><div><h1>Matchday sheets</h1><p>${esc(DATA.league)} · ${esc(DATA.season)} · tap a match for the full stats sheet, player hit rates and model prices.</p></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill">${fxs.length} fixtures</span><span class="pill accent">${fxs.reduce((a, f) => a + valueCount(f), 0)} value spots</span></div></div>
@@ -218,7 +227,7 @@ function fxCard(fx) {
       <span class="pill">xG ${fx2(xg[0], 1)} – ${fx2(xg[1], 1)}</span>
       ${fx.referee ? `<span class="pill">🟨 ${esc(fx.referee.name)}</span>` : `<span class="pill">Referee TBC</span>`}
       ${v ? `<span class="pill accent">${v} value bet${v > 1 ? "s" : ""}</span>` : ""}
-      ${fx.has_odds ? "" : `<span class="pill warn">No odds yet</span>`}
+      ${fx.started ? `<span class="pill bad">Kicked off</span>` : fx.has_odds ? "" : `<span class="pill warn">No odds yet</span>`}
     </div>
   </a>`;
 }
@@ -446,10 +455,20 @@ function accaPool() {
     !/(^under_0|over_0\.5$)/.test(l.key.split("|")[1]));
 }
 
-function pickPerMatch(pool, score) {
-  const best = {};
-  for (const l of pool) { const s = score(l); if (s == null) continue; if (!best[l.fx] || s > best[l.fx].s) best[l.fx] = { l, s }; }
-  return Object.values(best).sort((a, b) => b.s - a.s).slice(0, accaCfg.legs).map((x) => x.l);
+// One leg per match, and no more than two legs of the same kind (so it isn't four "1+ shots" legs)
+const legType = (l) => (l.kind === "player" ? l.stat : l.key.split("|")[1].replace(/^(home|away)_/, "").replace(/_?[\d.]+$/, ""));
+function pickPerMatch(pool, score, n = accaCfg.legs) {
+  const ranked = pool.map((l) => ({ l, s: score(l) })).filter((x) => x.s != null).sort((a, b) => b.s - a.s);
+  const usedFx = new Set(), types = {}, out = [];
+  for (const { l } of ranked) {
+    const t = legType(l);
+    if (usedFx.has(l.fx) || (types[t] || 0) >= 2) continue;
+    usedFx.add(l.fx);
+    types[t] = (types[t] || 0) + 1;
+    out.push(l);
+    if (out.length >= n) break;
+  }
+  return out;
 }
 
 function accaCard(title, blurb, legs) {
@@ -464,7 +483,7 @@ function pageAccas() {
   const pool = accaPool();
   const banker = pickPerMatch(pool, (l) => l.p);
   // Value legs are usually bigger prices, so they ignore the minimum-chance slider (but stay above 30%)
-  const value = pickPerMatch(LEGS.filter((l) => l.value && l.p >= 0.3), (l) => l.edge).slice(0, 3);
+  const value = pickPerMatch(LEGS.filter((l) => l.value && l.p >= 0.3), (l) => l.edge, 3);
   const bigger = pickPerMatch(pool, (l) => (l.p < accaCfg.minP + 0.12 ? l.p : null));
   return `<div class="page-head"><div><h1>Acca builder</h1><p>Builds accumulators from one leg per match so the legs don't depend on each other. Set how safe each leg must be. The "chance all win" figure is what really matters: four 75% legs only land about 32% of the time.</p></div></div>
     <div class="card controls">
@@ -595,6 +614,8 @@ async function init() {
     app.innerHTML = `<div class="empty-state"><h2>Data not ready</h2><p>The first data refresh hasn't finished yet. Check back in a few minutes.</p></div>`;
     return;
   }
+  const now = Date.now();
+  DATA.fixtures.forEach((f) => (f.started = now > Date.parse(f.kickoff)));
   LEGS = buildLegs();
   const ago = Math.round((Date.now() - new Date(DATA.generated)) / 3600000);
   $("#updated").textContent = `· updated ${ago < 1 ? "just now" : `${ago}h ago`}`;

@@ -267,3 +267,13 @@ svg text { fill: var(--muted); font: 11px var(--body); }
   .dot.lg { width: 11px; height: 11px; }
   .slip-fab { right: 12px; bottom: 12px; padding: 10px 14px; }
 }
+
+/* ---------- round 2 polish */
+.grid > * { min-width: 0; }
+@media (max-width: 640px) {
+  .acca-sum { grid-template-columns: repeat(2, 1fr) !important; }
+  .calib-row { grid-template-columns: 58px 1fr 96px; gap: 8px; font-size: 13px; }
+  .card-h { flex-wrap: wrap; }
+  .controls { gap: 12px; }
+}
+.btn { white-space: nowrap; }
