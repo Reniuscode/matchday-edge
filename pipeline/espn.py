@@ -46,15 +46,8 @@ def _event(e: dict) -> dict:
 
 def season_events(slug: str, start: dt.date, end: dt.date) -> list[dict]:
     """All league events between two dates. Tries one ranged call, then falls back to weekly chunks."""
-    url = SITE.format(slug=slug) + f"/scoreboard?dates={start:%Y%m%d}-{end:%Y%m%d}&limit=1000"
     events = {}
-    try:
-        for e in fetch_json(url).get("events", []):
-            events[str(e["id"])] = _event(e)
-    except Exception as ex:
-        print(f"  ESPN ranged scoreboard failed: {ex}")
-    if len(events) < 5:
-        print(f"  ESPN ranged scoreboard gave {len(events)} events; fetching day by day")
+    if True:  # ESPN refuses date-range queries from some networks, so ask one day at a time
         days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
 
         def grab(day):

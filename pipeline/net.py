@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-UA = "Mozilla/5.0 (matchday-edge stats bot; +https://github.com/Reniuscode/matchday-edge)"
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
 
 
 def fetch(url: str, *, retries: int = 4, timeout: int = 30, headers: dict | None = None) -> bytes:
